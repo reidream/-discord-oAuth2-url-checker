@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot OAuth2 URL Checker</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+  .container { max-width: 640px; width: 100%; }
+  h1 { font-size: 1.4rem; margin-bottom: 8px; color: #fff; }
+  .subtitle { color: #888; font-size: 0.9rem; margin-bottom: 24px; }
+  label { display: block; font-size: 0.85rem; color: #aaa; margin-bottom: 6px; }
+  input[type="text"] {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #16213e;
+    color: #fff;
+    font-size: 0.95rem;
+    outline: none;
+  }
+  input[type="text"]:focus { border-color: #5865f2; }
+  input[type="text"]::placeholder { color: #555; }
+  button {
+    margin-top: 12px;
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: #5865f2;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { background: #4752c4; }
+  #result {
+    margin-top: 24px;
+    padding: 16px;
+    border-radius: 8px;
+    display: none;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+  #result.ok { background: #0d3320; border: 1px solid #2ea043; }
+  #result.ng { background: #3d1a1a; border: 1px solid #da3633; }
+  .result-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
+  .result-title.ok { color: #3fb950; }
+  .result-title.ng { color: #f85149; }
+  .granted { color: #8b949e; }
+  .error-item { color: #f85149; }
+  .info-item { color: #8b949e; }
+  .section { margin-top: 24px; padding: 16px; background: #16213e; border-radius: 8px; }
+  .section h2 { font-size: 1rem; margin-bottom: 8px; color: #ccc; }
+  .section p, .section li { font-size: 0.85rem; color: #999; line-height: 1.6; }
+  .section ul { padding-left: 20px; }
+  .perm-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.8rem; }
+  .perm-table td { padding: 4px 8px; border-bottom: 1px solid #2a2a4a; }
+  .perm-table td:first-child { color: #58a6ff; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Bot OAuth2 URL Checker</h1>
+  <p class="subtitle">提出前にここで権限をチェックできます</p>
+
+  <label for="url-input">OAuth2 URL を貼り付けてください</label>
+  <input type="text" id="url-input"
+    placeholder="https://discord.com/oauth2/authorize?client_id=...&permissions=...&scope=bot%20applications.commands">
+  <button onclick="checkUrl()">チェックする</button>
+
+  <div id="result"></div>
+
+  <div class="section">
+    <h2>許可されている権限</h2>
+    <table class="perm-table">
+      <tr><td>View Channel</td><td>チャンネルを見る</td></tr>
+      <tr><td>Send Messages</td><td>メッセージ送信</td></tr>
+      <tr><td>Send Messages in Threads</td><td>スレッド内送信</td></tr>
+      <tr><td>Create Public Threads</td><td>スレッド作成</td></tr>
+      <tr><td>Embed Links</td><td>埋め込みメッセージ</td></tr>
+      <tr><td>Attach Files</td><td>ファイル添付</td></tr>
+      <tr><td>Add Reactions</td><td>リアクション</td></tr>
+      <tr><td>Read Message History</td><td>メッセージ履歴の読み取り</td></tr>
+      <tr><td>Use External Emojis</td><td>外部絵文字</td></tr>
+      <tr><td>Use Application Commands</td><td>スラッシュコマンド</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>URL の作り方</h2>
+    <ul>
+      <li>Discord Developer Portal → OAuth2 → URL Generator</li>
+      <li>scope: <strong>bot</strong> と <strong>applications.commands</strong> の 2 つだけ</li>
+      <li>permissions: 上の表の中から必要なものだけ選ぶ</li>
+      <li>生成された URL をそのままコピー</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const ALLOWED_PERMISSIONS = {
+  [1 << 6]:  "Add Reactions",
+  [1 << 10]: "View Channel",
+  [1 << 11]: "Send Messages",
+  [1 << 14]: "Embed Links",
+  [1 << 15]: "Attach Files",
+  [1 << 16]: "Read Message History",
+  [1 << 18]: "Use External Emojis",
+  [1 << 31]: "Use Application Commands",
+};
+// BigInt for bits >= 32
+const ALLOWED_PERMISSIONS_BIG = {
+  [1n << 35n]: "Create Public Threads",
+  [1n << 38n]: "Send Messages in Threads",
+};
+
+const ALLOWED_MASK = Object.keys(ALLOWED_PERMISSIONS).reduce((a, b) => a | Number(b), 0);
+const ALLOWED_MASK_BIG = BigInt(ALLOWED_MASK)
+  | (1n << 35n)
+  | (1n << 38n);
+
+const ALLOWED_SCOPES = new Set(["bot", "applications.commands"]);
+
+const DANGEROUS_PERMISSIONS = {
+  [1 << 1]:  "Kick Members",
+  [1 << 2]:  "Ban Members",
+  [1 << 3]:  "Administrator",
+  [1 << 4]:  "Manage Channels",
+  [1 << 5]:  "Manage Server",
+  [1 << 13]: "Manage Messages",
+  [1 << 17]: "Mention Everyone",
+  [1 << 28]: "Manage Roles",
+  [1 << 29]: "Manage Webhooks",
+};
+
+function checkUrl() {
+  const urlStr = document.getElementById("url-input").value.trim();
+  const el = document.getElementById("result");
+
+  if (!urlStr) {
+    el.style.display = "none";
+    return;
+  }
+
+  const errors = [];
+  const granted = [];
+  let clientId = null;
+
+  let parsed;
+  try {
+    parsed = new URL(urlStr);
+  } catch {
+    showResult(el, false, null, [], ["URL の形式が正しくありません"]);
+    return;
+  }
+
+  if (parsed.protocol !== "https:") errors.push("https の URL ではない");
+  if (parsed.hostname !== "discord.com") errors.push("Discord の URL ではない");
+  if (parsed.pathname !== "/oauth2/authorize") errors.push("OAuth2 招待 URL ではない");
+
+  const cid = parsed.searchParams.get("client_id");
+  if (!cid) {
+    errors.push("client_id パラメータがない");
+  } else if (!/^\d+$/.test(cid)) {
+    errors.push("client_id が数値ではない");
+  } else {
+    clientId = cid;
+  }
+
+  const permStr = parsed.searchParams.get("permissions");
+  let permsBig = null;
+  if (permStr === null || permStr === "") {
+    errors.push("permissions パラメータがない (短縮リンク不可)");
+  } else {
+    try {
+      permsBig = BigInt(permStr);
+    } catch {
+      errors.push("permissions が数値ではない");
+    }
+    if (permsBig !== null && permsBig < 0n) {
+      errors.push("permissions が負の値");
+      permsBig = null;
+    }
+  }
+
+  const scopeStr = parsed.searchParams.get("scope");
+  if (scopeStr === null || scopeStr === "") {
+    errors.push("scope パラメータがない");
+  } else {
+    const scopes = new Set(scopeStr.split(/\s+/));
+    const extra = [...scopes].filter(s => !ALLOWED_SCOPES.has(s));
+    const missing = [...ALLOWED_SCOPES].filter(s => !scopes.has(s));
+    if (extra.length) errors.push("許可外の scope: " + extra.sort().join(", "));
+    if (missing.length) errors.push("不足 scope: " + missing.sort().join(", "));
+  }
+
+  if (permsBig !== null) {
+    const extra = permsBig & ~ALLOWED_MASK_BIG;
+    if (extra !== 0n) {
+      for (const [bit, name] of Object.entries(DANGEROUS_PERMISSIONS)) {
+        if (extra & BigInt(bit)) errors.push("禁止権限: " + name);
+      }
+      let unknown = extra;
+      for (const bit of Object.keys(DANGEROUS_PERMISSIONS)) {
+        unknown &= ~BigInt(bit);
+      }
+      if (unknown !== 0n) errors.push("許可リスト外の権限: 0x" + unknown.toString(16));
+    }
+
+    for (const [bit, name] of Object.entries(ALLOWED_PERMISSIONS)) {
+      if (permsBig & BigInt(bit)) granted.push(name);
+    }
+    for (const [bit, name] of Object.entries(ALLOWED_PERMISSIONS_BIG)) {
+      if (permsBig & BigInt(bit)) granted.push(name);
+    }
+  }
+
+  showResult(el, errors.length === 0, clientId, granted, errors);
+}
+
+function showResult(el, ok, clientId, granted, errors) {
+  el.style.display = "block";
+  el.className = ok ? "ok" : "ng";
+
+  let html = ok
+    ? '<div class="result-title ok">&#x2705; OK &mdash; この URL は提出できます</div>'
+    : '<div class="result-title ng">&#x274C; NG &mdash; 以下を修正してください</div>';
+
+  if (clientId) html += '<div class="info-item">Client ID: ' + esc(clientId) + '</div>';
+  if (granted.length) html += '<div class="granted">許可権限: ' + esc(granted.join(", ")) + '</div>';
+  for (const e of errors) html += '<div class="error-item">' + esc(e) + '</div>';
+
+  el.innerHTML = html;
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+document.getElementById("url-input").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") checkUrl();
+});
+</script>
+</body>
+</html>
