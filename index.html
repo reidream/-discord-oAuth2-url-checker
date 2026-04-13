@@ -109,40 +109,36 @@
 </div>
 
 <script>
-const ALLOWED_PERMISSIONS = {
-  [1 << 6]:  "Add Reactions",
-  [1 << 10]: "View Channel",
-  [1 << 11]: "Send Messages",
-  [1 << 14]: "Embed Links",
-  [1 << 15]: "Attach Files",
-  [1 << 16]: "Read Message History",
-  [1 << 18]: "Use External Emojis",
-  [1 << 31]: "Use Application Commands",
-};
-// BigInt for bits >= 32
-const ALLOWED_PERMISSIONS_BIG = {
-  [1n << 35n]: "Create Public Threads",
-  [1n << 38n]: "Send Messages in Threads",
-};
+// All bit operations use BigInt to avoid JS 32-bit signed overflow (1<<31 = -2147483648)
+const ALLOWED_PERMISSIONS = [
+  [1n << 6n,  "Add Reactions"],
+  [1n << 10n, "View Channel"],
+  [1n << 11n, "Send Messages"],
+  [1n << 14n, "Embed Links"],
+  [1n << 15n, "Attach Files"],
+  [1n << 16n, "Read Message History"],
+  [1n << 18n, "Use External Emojis"],
+  [1n << 31n, "Use Application Commands"],
+  [1n << 35n, "Create Public Threads"],
+  [1n << 38n, "Send Messages in Threads"],
+];
 
-const ALLOWED_MASK = Object.keys(ALLOWED_PERMISSIONS).reduce((a, b) => a | Number(b), 0);
-const ALLOWED_MASK_BIG = BigInt(ALLOWED_MASK)
-  | (1n << 35n)
-  | (1n << 38n);
+const ALLOWED_MASK = ALLOWED_PERMISSIONS.reduce((a, [bit]) => a | bit, 0n);
+// = 311385508928n
 
 const ALLOWED_SCOPES = new Set(["bot", "applications.commands"]);
 
-const DANGEROUS_PERMISSIONS = {
-  [1 << 1]:  "Kick Members",
-  [1 << 2]:  "Ban Members",
-  [1 << 3]:  "Administrator",
-  [1 << 4]:  "Manage Channels",
-  [1 << 5]:  "Manage Server",
-  [1 << 13]: "Manage Messages",
-  [1 << 17]: "Mention Everyone",
-  [1 << 28]: "Manage Roles",
-  [1 << 29]: "Manage Webhooks",
-};
+const DANGEROUS_PERMISSIONS = [
+  [1n << 1n,  "Kick Members"],
+  [1n << 2n,  "Ban Members"],
+  [1n << 3n,  "Administrator"],
+  [1n << 4n,  "Manage Channels"],
+  [1n << 5n,  "Manage Server"],
+  [1n << 13n, "Manage Messages"],
+  [1n << 17n, "Mention Everyone"],
+  [1n << 28n, "Manage Roles"],
+  [1n << 29n, "Manage Webhooks"],
+];
 
 function checkUrl() {
   const urlStr = document.getElementById("url-input").value.trim();
@@ -206,23 +202,20 @@ function checkUrl() {
   }
 
   if (permsBig !== null) {
-    const extra = permsBig & ~ALLOWED_MASK_BIG;
+    const extra = permsBig & ~ALLOWED_MASK;
     if (extra !== 0n) {
-      for (const [bit, name] of Object.entries(DANGEROUS_PERMISSIONS)) {
-        if (extra & BigInt(bit)) errors.push("禁止権限: " + name);
+      for (const [bit, name] of DANGEROUS_PERMISSIONS) {
+        if (extra & bit) errors.push("禁止権限: " + name);
       }
       let unknown = extra;
-      for (const bit of Object.keys(DANGEROUS_PERMISSIONS)) {
-        unknown &= ~BigInt(bit);
+      for (const [bit] of DANGEROUS_PERMISSIONS) {
+        unknown &= ~bit;
       }
       if (unknown !== 0n) errors.push("許可リスト外の権限: 0x" + unknown.toString(16));
     }
 
-    for (const [bit, name] of Object.entries(ALLOWED_PERMISSIONS)) {
-      if (permsBig & BigInt(bit)) granted.push(name);
-    }
-    for (const [bit, name] of Object.entries(ALLOWED_PERMISSIONS_BIG)) {
-      if (permsBig & BigInt(bit)) granted.push(name);
+    for (const [bit, name] of ALLOWED_PERMISSIONS) {
+      if (permsBig & bit) granted.push(name);
     }
   }
 
