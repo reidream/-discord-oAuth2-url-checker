@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nansen API Bot ハッカソン クイック招待</title>
+  <meta name="description" content="Bot ID を貼るだけで、Nansen API Bot ハッカソン標準権限のついた Discord 招待 URL を生成します。" />
+  <meta property="og:title" content="Nansen API Bot ハッカソン クイック招待" />
+  <meta property="og:description" content="Bot ID を貼るだけで Discord 招待 URL を生成。Nansen API Bot ハッカソン標準権限セット。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="nansen-logo-green.svg" />
+  <meta name="twitter:card" content="summary" />
+  <link rel="icon" type="image/svg+xml" href="nansen-logo-green.svg" />
+  <!--
+    配置: my_work/nansen-hackathon/experiments/quick-invite.html
+    プリセット根拠: my_work/nansen-discord-bot-permissions.md:48-61 (ALLOWED_MASK = 311385508928)
+    禁止権限リスト根拠: 同ファイル:102-112 (DANGEROUS_NAMES)
+  -->
+  <style>
+    :root {
+      color-scheme: light dark;
+      --primary: #5865F2;
+      --primary-hover: #4752c4;
+      --success: #23a55a;
+      --error: #e03e3e;
+      --border: #d4d7dc;
+      --bg-subtle: #f6f6f8;
+      --text-subtle: #6c757d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+      line-height: 1.65;
+    }
+    header { margin-bottom: 28px; }
+    h1 {
+      font-size: clamp(20px, 5vw, 26px);
+      line-height: 1.3;
+      margin: 0 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      overflow-wrap: break-word;
+      word-break: normal;
+    }
+    h1 span { flex: 1 1 auto; min-width: 0; }
+    .brand-logo {
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+    }
+    @media (prefers-color-scheme: dark) {
+      .brand-logo {
+        content: url("nansen-logo-mono.svg");
+        filter: invert(1);
+      }
+    }
+    .subtitle { color: var(--text-subtle); font-size: 14px; margin: 0; }
+
+    label { display: block; margin-top: 20px; font-weight: 600; font-size: 15px; }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-top: 6px;
+      font-family: inherit;
+    }
+    input[type="text"]:focus {
+      outline: 2px solid var(--primary);
+      outline-offset: 1px;
+      border-color: var(--primary);
+    }
+    input[aria-invalid="true"] {
+      border-color: var(--error);
+    }
+
+    .hint {
+      font-size: 13px;
+      color: var(--text-subtle);
+      margin-top: 6px;
+    }
+
+    button {
+      margin-top: 14px;
+      padding: 12px 22px;
+      font-size: 16px;
+      min-height: 44px;
+      cursor: pointer;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+    button:hover { background: var(--primary-hover); }
+    button:focus-visible { outline: 3px solid #1d1d1d; outline-offset: 2px; }
+
+    #result {
+      margin-top: 28px;
+      padding: 18px;
+      background: var(--bg-subtle);
+      border: 1px solid transparent;
+      border-radius: 10px;
+      word-break: break-all;
+      min-height: 28px;
+    }
+    #result.empty { display: none; }
+    #result.error-state {
+      background: #fff3f3;
+      border-color: var(--error);
+    }
+    @media (prefers-color-scheme: dark) {
+      #result.error-state {
+        background: #3a1f1f;
+        border-color: var(--error);
+      }
+    }
+    #result .success-lead {
+      font-weight: 600;
+      margin: 0 0 10px;
+      color: var(--success);
+    }
+    #result .url-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    #result a {
+      color: var(--primary);
+      font-size: 14px;
+      word-break: break-all;
+    }
+    #result .copy-btn {
+      margin-top: 10px;
+      padding: 8px 14px;
+      font-size: 14px;
+      min-height: 36px;
+      background: white;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+    #result .copy-btn:hover { background: #eef0ff; }
+    #result .hint-post {
+      font-size: 13px;
+      color: var(--text-subtle);
+      margin-top: 10px;
+    }
+    #result .error {
+      color: var(--error);
+      font-weight: 600;
+    }
+    #result samp {
+      font-size: 13px;
+      color: var(--text-subtle);
+      display: block;
+      margin-top: 6px;
+    }
+
+    details {
+      margin-top: 18px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    details summary {
+      cursor: pointer;
+      font-weight: 600;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+    details[open] summary { margin-bottom: 10px; }
+    details ul { margin: 6px 0 0; padding-left: 22px; }
+    details li { margin: 3px 0; }
+    details p { margin: 8px 0 0; }
+
+    code {
+      background: #eef0ff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    details.warn {
+      border-color: #e0a800;
+      background: #fff9e6;
+    }
+    details.warn summary { color: #8a6d00; }
+    @media (prefers-color-scheme: dark) {
+      details.warn {
+        background: #2e2713;
+        border-color: #8a6d00;
+      }
+      details.warn summary { color: #e0a800; }
+    }
+
+    footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text-subtle);
+    }
+    footer a { color: var(--primary); }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --border: #3a3d42;
+        --bg-subtle: #1f2126;
+        --text-subtle: #a0a4ab;
+      }
+      input[type="text"] { background: #13151a; color: #e9ebef; }
+      code { background: #2a2e38; }
+      #result .copy-btn { background: #13151a; }
+      #result .copy-btn:hover { background: #1d2030; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>
+      <img src="nansen-logo-green.svg" alt="Nansen" class="brand-logo" />
+      <span>ハッカソン クイック招待</span>
+    </h1>
+    <p class="subtitle">Bot ID を貼るだけで、ハッカソン標準権限のついた Discord 招待 URL を生成します。</p>
+  </header>
+
+  <main>
+    <label for="botId">Bot ID (Application ID)</label>
+    <input
+      id="botId"
+      type="text"
+      inputmode="numeric"
+      pattern="[0-9]*"
+      placeholder="例: 123456789012345678"
+      autocomplete="off"
+      aria-describedby="botIdHint"
+    />
+    <p class="hint" id="botIdHint">Discord Developer Portal の Application ID（17〜20 桁の数字）。</p>
+
+    <details>
+      <summary>❓ Bot ID ってどこで取るの？</summary>
+      <ol>
+        <li><a href="https://discord.com/developers/applications" target="_blank" rel="noopener">Discord Developer Portal</a> を開く</li>
+        <li>対象アプリをクリック → 左メニュー「General Information」</li>
+        <li>「APPLICATION ID」をコピーしてここに貼り付け</li>
+      </ol>
+    </details>
+
+    <details class="warn">
+      <summary>⚠️ 招待前に必ずチェック: Message Content Intent を ON に</summary>
+      <p>Bot がメッセージ本文を読む場合、OAuth2 権限とは別に <strong>Gateway Intent</strong> を有効化する必要があります（デフォルト OFF）。</p>
+      <ol>
+        <li><a href="https://discord.com/developers/applications" target="_blank" rel="noopener">Developer Portal</a> → 対象アプリ → 左メニュー「<strong>Bot</strong>」</li>
+        <li>「Privileged Gateway Intents」セクションの <strong>MESSAGE CONTENT INTENT</strong> を ON</li>
+      </ol>
+      <p class="hint-post">OFF のまま招待すると、mention されていないメッセージの <code>content</code> が空文字で返り「bot がメッセージを読めない」状態になります。</p>
+    </details>
+
+    <button onclick="generate()">URL を作る</button>
+
+    <div id="result" class="empty" aria-live="polite"></div>
+
+    <details>
+      <summary>✅ この URL で付与される権限（10 個）</summary>
+      <ul>
+        <li>View Channel（チャンネル閲覧）</li>
+        <li>Send Messages（メッセージ送信）</li>
+        <li>Create Public Threads（スレッド作成）</li>
+        <li>Send Messages in Threads（スレッド内送信）</li>
+        <li>Embed Links（埋め込み）</li>
+        <li>Attach Files（ファイル添付）</li>
+        <li>Add Reactions（リアクション）</li>
+        <li>Read Message History（履歴読み取り）</li>
+        <li>Use External Emojis（外部絵文字）</li>
+        <li>Use Application Commands（スラッシュコマンド応答）</li>
+      </ul>
+      <p><code>permissions = 311385508928</code> / <code>scope = bot + applications.commands</code></p>
+    </details>
+
+  </main>
+
+  <footer>
+    <p>
+      カスタム権限を使いたい場合は、
+      <a href="https://www.notion.so/Bot-Discord-Bot-34192ce8dc2d8088b8f0c30e799704fd" target="_blank" rel="noopener">
+        Bot 参加ガイド Step 2
+      </a>
+      をご覧ください。
+    </p>
+  </footer>
+
+  <script>
+    const PRESET_PERMISSIONS = "311385508928";
+    const SCOPE = "bot+applications.commands";
+
+    const $ = (id) => document.getElementById(id);
+
+    function generate() {
+      const input = $("botId");
+      const resultEl = $("result");
+      const id = input.value.trim();
+
+      resultEl.classList.remove("empty");
+
+      if (!/^\d{17,20}$/.test(id)) {
+        input.setAttribute("aria-invalid", "true");
+        resultEl.classList.add("error-state");
+        resultEl.innerHTML = `
+          <p class="error">⚠️ Bot ID は 17〜20 桁の数字です</p>
+          <samp>例: 123456789012345678</samp>
+          <p class="hint-post">Discord Developer Portal の Application ID をコピーしてください。</p>
+        `;
+        return;
+      }
+
+      input.removeAttribute("aria-invalid");
+      resultEl.classList.remove("error-state");
+      const url = `https://discord.com/oauth2/authorize?client_id=${id}&permissions=${PRESET_PERMISSIONS}&integration_type=0&scope=${SCOPE}`;
+
+      resultEl.innerHTML = `
+        <p class="success-lead">✅ 準備完了</p>
+        <div class="url-line">
+          <a href="${url}" target="_blank" rel="noopener">${url}</a>
+        </div>
+        <button class="copy-btn" onclick="copyUrl(this, '${url}')">📋 URL をコピー</button>
+        <p class="hint-post">このリンクを自分で開くか、サーバー管理者に渡してください。</p>
+      `;
+    }
+
+    async function copyUrl(btn, url) {
+      const original = btn.textContent;
+      try {
+        await navigator.clipboard.writeText(url);
+        btn.textContent = "✅ コピー済み";
+      } catch (e) {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); btn.textContent = "✅ コピー済み"; }
+        catch (_) { btn.textContent = "⚠️ 手動でコピーしてください"; }
+        document.body.removeChild(ta);
+      }
+      setTimeout(() => { btn.textContent = original; }, 2000);
+    }
+
+    $("botId").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") generate();
+    });
+
+    $("botId").addEventListener("input", (e) => {
+      if (e.target.getAttribute("aria-invalid") === "true") {
+        e.target.removeAttribute("aria-invalid");
+      }
+    });
+  </script>
+</body>
+</html>
